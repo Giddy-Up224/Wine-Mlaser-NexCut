@@ -1,0 +1,9 @@
+#!/bin/bash
+# Launch Mlaser (NexCut) under Wine.
+# MUST run from C: - the app creates \Technology\{Fiber,CO2} at the drive root,
+# and running from Z: (= /) fails because / is not writable.
+export WINEPREFIX="${WINEPREFIX:-$HOME/.wine-mlaser}"
+export DISPLAY="${DISPLAY:-:0}"
+export WINEDEBUG=-all
+cd "$WINEPREFIX/drive_c/Mlaser" || { echo "Mlaser not linked into the prefix - run setup-wine-mlaser.sh"; exit 1; }
+exec wine MainApp.exe "$@"
