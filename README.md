@@ -1,5 +1,5 @@
 # Wine-Mlaser
-> [!ALERT] 🚧 Work in Progress
+> [!WARNING] 🚧 Work in Progress
 
 Running **Mlaser** (NexCut) — the control software for the **Gweike M3 Ultra / CF1390** laser cutter — on Linux under Wine.
 
