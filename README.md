@@ -15,16 +15,49 @@ Tested and working: full UI, machine control, Modbus TCP to the controller.
 
 ## TL;DR
 
+Extract the vendor's application first; this repository does not include it.
+Use the folder that actually contains `MainApp.exe` (some archives have nested folders).
+
 ```bash
-sudo apt install -y wine winetricks
-export WINEPREFIX=~/.wine-mlaser WINEARCH=win32
-wineboot --init
-winetricks -q mfc42
-ln -s /path/to/Mlaser-v0.0.0.52 "$WINEPREFIX/drive_c/Mlaser"
-cd "$WINEPREFIX/drive_c/Mlaser" && wine MainApp.exe
+sudo dpkg --add-architecture i386
+sudo apt update
+sudo apt install -y wine wine32:i386 winetricks
+
+./scripts/setup-wine-mlaser.sh "/path/to/extracted/Mlaser" --cjk-fonts
+./scripts/mlaser
 ```
 
-The two things that actually matter: **`mfc42`** and **running from `C:`**. Everything else is ordinary Wine setup.
+Run setup and launch as your normal desktop user, not with `sudo`.
+`--cjk-fonts` is optional; it installs fonts for Chinese UI text.
+Setup can be rerun and preserves the app files and existing Technology data.
+It refuses an existing 64-bit prefix or a non-symlink `C:/Mlaser` directory rather
+than overwriting it. To use a different prefix, set an absolute `WINEPREFIX`
+for both commands.
+
+For a dedicated laser Ethernet connection, include network configuration in setup:
+
+```bash
+nmcli connection show
+./scripts/setup-wine-mlaser.sh "/path/to/extracted/Mlaser" \
+    --network "Wired connection 1" --address 10.1.1.100
+```
+
+Choose the connection attached to the laser, not your internet connection.
+This changes and activates an existing NetworkManager profile and may interrupt
+traffic on it. Only the network step requests sudo; it clears the IPv4 gateway
+and prevents the laser connection from becoming the default route.
+Without `--network`, setup does not change networking.
+
+Restore that connection to DHCP with:
+
+```bash
+./scripts/setup-wine-mlaser.sh --revert-network "Wired connection 1"
+```
+
+This restores DHCP defaults, not a backup of any previous custom static settings.
+Use `./scripts/setup-wine-mlaser.sh --help` for all options.
+
+The two things that actually matter for the app: **`mfc42`** and **running from `C:`**.
 
 ---
 
@@ -79,11 +112,23 @@ A leading backslash means *root of the current drive*. Launch the app from anywh
 ```bash
 ln -s /path/to/Mlaser-v0.0.0.52 "$WINEPREFIX/drive_c/Mlaser"
 mkdir -p "$WINEPREFIX/drive_c/Technology/Fiber" "$WINEPREFIX/drive_c/Technology/CO2"
-cd "$WINEPREFIX/drive_c/Mlaser"
-wine MainApp.exe
+wine start /wait /d 'C:\Mlaser' 'C:\Mlaser\MainApp.exe'
 ```
 
-A symlink keeps your real files where they are. `\Technology` now resolves to `~/.wine-mlaser/drive_c/Technology`.
+A symlink keeps your real files where they are. The launcher explicitly sets the
+Windows working directory to `C:\Mlaser`, so it does not rely on Wine interpreting
+a Linux working directory through a symlink. `\Technology` now resolves to
+`~/.wine-mlaser/drive_c/Technology`. The launcher also recreates missing Technology
+directories before starting the app.
+
+**Newer beta builds use a different location.** File tracing of
+`Mlaser-v0.0.1.51_Beta` showed Technology access under
+`%LOCALAPPDATA%\NexCut\Technology`, which on this Wine profile is
+`C:\users\laser\AppData\Local\NexCut\Technology`. Creating only
+`C:\Technology` is not sufficient for that build. Setup and launch now ask Wine
+for `%LOCALAPPDATA%` and create the full `NexCut/Technology/Fiber` and
+`NexCut/Technology/CO2` directory trees there as well. Existing data is preserved;
+no administrator privileges or writable Linux root folder are needed.
 
 ---
 
@@ -113,6 +158,7 @@ Even patched, it could not work: Wine's bundled `netsh.exe` is a stub, and Wine 
 sudo nmcli con mod "Wired connection 1" \
     ipv4.method manual \
     ipv4.addresses 10.1.1.100/24 \
+    ipv4.gateway "" \
     ipv4.never-default yes
 sudo nmcli con up "Wired connection 1"
 ping -c3 10.1.1.168
@@ -120,7 +166,8 @@ ping -c3 10.1.1.168
 
 `ipv4.never-default yes` is important — without it NetworkManager may hand the default route to the isolated laser subnet and kill your internet. Do **not** set `ipv4.gateway`, despite `ipAdd.ini` listing `10.1.1.1`.
 
-Revert with `sudo nmcli con mod "Wired connection 1" ipv4.method auto`.
+The setup script performs these network steps with `--network`. Revert with
+`./scripts/setup-wine-mlaser.sh --revert-network "Wired connection 1"`.
 
 ### Machine endpoints (from `File/ipAdd.ini`)
 
@@ -180,10 +227,12 @@ Not necessarily malicious for this class of industrial machine, but it is unsoli
 
 | Script | Purpose |
 |---|---|
-| `scripts/setup-wine-mlaser.sh` | One-shot setup: prefix, mfc42, symlink, folders |
-| `scripts/mlaser` | Launcher (runs from `C:` so `\Technology` resolves) |
-| `scripts/laser-network.sh` | Static IP on the laser subnet via nmcli |
+| `scripts/setup-wine-mlaser.sh` | Setup: prefix, mfc42, symlink, folders, optional fonts and network configuration |
+| `scripts/mlaser` | Launcher (explicit Windows `C:` working directory so `\Technology` resolves) |
 | `scripts/watch-vendor.sh` | Capture + attribute traffic to the vendor servers |
+
+The former `laser-network.sh` functionality is now included in setup via
+`--network` and `--revert-network`. The vendor-monitoring script is unchanged.
 
 ---
 

@@ -1,9 +1,20 @@
 #!/bin/bash
-# Launch Mlaser (NexCut) under Wine.
-# MUST run from C: - the app creates \Technology\{Fiber,CO2} at the drive root,
-# and running from Z: (= /) fails because / is not writable.
+set -euo pipefail
+
 export WINEPREFIX="${WINEPREFIX:-$HOME/.wine-mlaser}"
-export DISPLAY="${DISPLAY:-:0}"
-export WINEDEBUG=-all
-cd "$WINEPREFIX/drive_c/Mlaser" || { echo "Mlaser not linked into the prefix - run setup-wine-mlaser.sh"; exit 1; }
-exec wine MainApp.exe "$@"
+export WINEDEBUG="${WINEDEBUG:--all}"
+[[ "$WINEPREFIX" = /* ]] || { echo "WINEPREFIX must be an absolute path" >&2; exit 1; }
+(( EUID != 0 )) || { echo "Launch without sudo, as your desktop user" >&2; exit 1; }
+for dependency in wine winepath; do
+	command -v "$dependency" >/dev/null || { echo "$dependency is not installed; run setup-wine-mlaser.sh for prerequisites" >&2; exit 1; }
+done
+[[ -f "$WINEPREFIX/drive_c/Mlaser/MainApp.exe" ]] || { echo "MainApp.exe is missing; run setup-wine-mlaser.sh with the extracted app folder" >&2; exit 1; }
+mkdir -p -- "$WINEPREFIX/drive_c/Technology/Fiber" "$WINEPREFIX/drive_c/Technology/CO2"
+WINDOWS_LOCAL_APPDATA="$(wine cmd /c 'echo %LOCALAPPDATA%')"
+WINDOWS_LOCAL_APPDATA="${WINDOWS_LOCAL_APPDATA//$'\r'/}"
+[[ -n "$WINDOWS_LOCAL_APPDATA" && "$WINDOWS_LOCAL_APPDATA" != '%LOCALAPPDATA%' ]] || { echo "Wine did not provide LOCALAPPDATA" >&2; exit 1; }
+LOCAL_APPDATA="$(winepath -u "$WINDOWS_LOCAL_APPDATA")"
+[[ "$LOCAL_APPDATA" = /* ]] || { echo "Wine returned an invalid Local AppData path" >&2; exit 1; }
+mkdir -p -- "$LOCAL_APPDATA/NexCut/Technology/Fiber" "$LOCAL_APPDATA/NexCut/Technology/CO2"
+cd -- "$WINEPREFIX/drive_c/Mlaser"
+exec wine start /wait /d 'C:\Mlaser' 'C:\Mlaser\MainApp.exe' "$@"
